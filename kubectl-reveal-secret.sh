@@ -8,6 +8,13 @@ get_current_ns() {
   kubectl config view --minify --output 'jsonpath={..namespace}'
 }
 
+list_opaque_secrets() {
+  local ns="${ns:-$(get_current_ns)}"
+
+  kubectl -n "$ns" get secret -o json | \
+    jq -r '.items[] | select(.type == "Opaque").metadata.name'
+}
+
 reveal_secret() {
   local ns
 
@@ -28,7 +35,12 @@ reveal_secret() {
 
   if [[ -z "$secret" ]]
   then
-    echo "Missing secret." >&2
+    {
+      echo "Missing secret."
+      usage
+      echo -e "\nAvaible secrets:"
+      ns="$ns" list_opaque_secrets
+    } >&2
     return 2
   fi
 

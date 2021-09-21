@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 usage() {
-  echo "Usage: $(basename "$0") [-n NAMESPACE] SECRET"
+  echo "Usage: $(basename "$0") [-n NAMESPACE] SECRET [KEY]"
 }
 
 get_current_ns() {
@@ -32,6 +32,7 @@ reveal_secret() {
   done
 
   local secret="$1"
+  local key="$2"
 
   if [[ -z "$secret" ]]
   then
@@ -46,8 +47,15 @@ reveal_secret() {
 
   ns="${ns:-$(get_current_ns)}"
 
-  kubectl -n "$ns" get secrets -o json "$secret" | \
-    jq -r '.data | to_entries[] | .key + " " + (.value | @base64d)'
+  if [[ -z "$key" ]]
+  then
+    kubectl -n "$ns" get secrets -o json "$secret" | \
+      jq -r '.data | to_entries[] | .key + " " + (.value | @base64d)'
+  else
+    # Only show plaintext value of the requested key
+    kubectl -n "$ns" get secrets -o json "$secret" | \
+      jq -r --arg key "$key" '.data[$key] | @base64d'
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]

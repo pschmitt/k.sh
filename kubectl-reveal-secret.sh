@@ -1,26 +1,32 @@
 #!/usr/bin/env bash
 
 usage() {
-  echo "Usage: $(basename "$0") [-n NAMESPACE] SECRET [KEY]"
+  echo "Usage: $(basename "$0") [--context CONTEXT] [-n NAMESPACE] SECRET [KEY]"
 }
 
 get_current_ns() {
-  kubectl config view --minify --output 'jsonpath={..namespace}'
+  local ctx="${ctx:-$(kubectl current-context)}"
+  kubectl --context "$ctx" config view --minify --output 'jsonpath={..namespace}'
 }
 
 list_opaque_secrets() {
   local ns="${ns:-$(get_current_ns)}"
+  local ctx="${ctx:-$(kubectl current-context)}"
 
   kubectl -n "$ns" get secret -o json | \
     jq -r '.items[] | select(.type == "Opaque").metadata.name'
 }
 
 reveal_secret() {
-  local ns
+  local ns ctx
 
   while [[ -n "$*" ]]
   do
     case "$1" in
+      --context)
+        ctx="$2"
+        shift 2
+        ;;
       -n|--namespace)
         ns="$2"
         shift 2
@@ -31,6 +37,9 @@ reveal_secret() {
     esac
   done
 
+  # Default to current context
+  ctx=${ctx:-$(kubectl config current-context)}
+
   local secret="$1"
   local key="$2"
 
@@ -40,20 +49,20 @@ reveal_secret() {
       echo "Missing secret."
       usage
       echo -e "\nAvaible secrets:"
-      ns="$ns" list_opaque_secrets
+      ctx="$ctx" ns="$ns" list_opaque_secrets
     } >&2
     return 2
   fi
 
-  ns="${ns:-$(get_current_ns)}"
+  ns="${ns:-$(ctx="$ctx" get_current_ns)}"
 
   if [[ -z "$key" ]]
   then
-    kubectl -n "$ns" get secrets -o json "$secret" | \
+    kubectl --context "$ctx" -n "$ns" get secrets -o json "$secret" | \
       jq -r '.data | to_entries[] | .key + " " + (.value | @base64d)'
   else
     # Only show plaintext value of the requested key
-    kubectl -n "$ns" get secrets -o json "$secret" | \
+    kubectl --context "$ctx" -n "$ns" get secrets -o json "$secret" | \
       jq -r --arg key "$key" '.data[$key] | @base64d'
   fi
 }
